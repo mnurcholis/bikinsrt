@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pembuat File SRT</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    .container { max-width: 900px; margin: 0 auto; }
+
+    h1 {
+      text-align: center;
+      font-size: 2rem;
+      color: #38bdf8;
+      margin-bottom: 0.3rem;
+    }
+
+    .tagline {
+      text-align: center;
+      color: #64748b;
+      font-size: 0.88rem;
+      margin-bottom: 2rem;
+    }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 2px solid #1e293b;
+      margin-bottom: 1.75rem;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      color: #64748b;
+      font-size: 0.95rem;
+      padding: 0.6rem 1.4rem;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      font-weight: 600;
+      transition: color 0.2s, border-color 0.2s;
+    }
+
+    .tab-btn.active {
+      color: #38bdf8;
+      border-bottom-color: #38bdf8;
+    }
+
+    .tab-btn:hover:not(.active) { color: #94a3b8; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Upload panel ── */
+    .upload-card {
+      background: #1e293b;
+      border: 2px dashed #334155;
+      border-radius: 12px;
+      padding: 2.5rem 2rem;
+      text-align: center;
+      transition: border-color 0.2s, background 0.2s;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .upload-card.dragover {
+      border-color: #38bdf8;
+      background: #0f2236;
+    }
+
+    .upload-card input[type=file] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .upload-icon { font-size: 2.8rem; margin-bottom: 0.6rem; }
+
+    .upload-card p {
+      color: #94a3b8;
+      font-size: 0.9rem;
+      pointer-events: none;
+    }
+
+    .upload-card .file-types {
+      color: #475569;
+      font-size: 0.78rem;
+      margin-top: 0.4rem;
+    }
+
+    .upload-options {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.25rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .opt-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+
+    .opt-group label {
+      font-size: 0.78rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .opt-group select {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #e2e8f0;
+      padding: 0.45rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+
+    .opt-group select:focus { outline: none; border-color: #38bdf8; }
+
+    .selected-file {
+      margin-top: 1rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      font-size: 0.88rem;
+      color: #94a3b8;
+      display: none;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .selected-file .fname { color: #e2e8f0; font-weight: 600; }
+
+    /* ── Progress ── */
+    .progress-wrap {
+      margin-top: 1.25rem;
+      display: none;
+    }
+
+    .progress-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.45rem;
+    }
+
+    .progress-label {
+      font-size: 0.82rem;
+      color: #94a3b8;
+    }
+
+    .progress-num {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #38bdf8;
+      font-variant-numeric: tabular-nums;
+      min-width: 3.2rem;
+      text-align: right;
+    }
+
+    .progress-bar-bg {
+      background: #1e293b;
+      border-radius: 99px;
+      height: 10px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #7c3aed, #0ea5e9, #38bdf8);
+      background-size: 200% 100%;
+      width: 0%;
+      transition: width 0.35s ease;
+      border-radius: 99px;
+      animation: shimmer 2s linear infinite;
+    }
+
+    @keyframes shimmer {
+      0%   { background-position: 200% center; }
+      100% { background-position: -200% center; }
+    }
+
+    /* ── Manual editor ── */
+    .filename-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .filename-row label { white-space: nowrap; color: #94a3b8; font-size: 0.9rem; }
+
+    .filename-row input {
+      flex: 1;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #e2e8f0;
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.95rem;
+    }
+
+    .filename-row input:focus { outline: none; border-color: #38bdf8; }
+
+    .sub-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+    .sub-row {
+      display: grid;
+      grid-template-columns: 40px 1fr 1fr 2fr 36px;
+      gap: 0.5rem;
+      align-items: center;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.6rem 0.75rem;
+      transition: border-color 0.2s;
+    }
+
+    .sub-row:hover { border-color: #475569; }
+    .row-num { color: #64748b; font-size: 0.8rem; text-align: center; font-weight: 600; }
+
+    .sub-row input, .sub-row textarea {
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: #e2e8f0;
+      padding: 0.45rem 0.6rem;
+      border-radius: 5px;
+      font-size: 0.88rem;
+      width: 100%;
+      font-family: inherit;
+    }
+
+    .sub-row textarea { resize: vertical; min-height: 38px; }
+
+    .sub-row input:focus, .sub-row textarea:focus { outline: none; border-color: #38bdf8; }
+    .sub-row input::placeholder, .sub-row textarea::placeholder { color: #475569; }
+
+    .btn-del {
+      background: none;
+      border: none;
+      color: #ef4444;
+      font-size: 1.2rem;
+      cursor: pointer;
+      padding: 0;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+
+    .btn-del:hover { opacity: 1; }
+
+    .actions {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 0.55rem 1.25rem;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      font-weight: 600;
+      transition: opacity 0.2s;
+    }
+
+    .btn:hover:not(:disabled) { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-add { background: #1e293b; color: #38bdf8; border: 1px solid #38bdf8; }
+    .btn-download { background: #0ea5e9; color: #fff; }
+    .btn-transcribe { background: #7c3aed; color: #fff; }
+    .btn-clear { background: #1e293b; color: #f87171; border: 1px solid #f87171; margin-left: auto; }
+
+    /* ── Preview ── */
+    .preview-section { margin-top: 2rem; }
+
+    .preview-section h2 {
+      color: #64748b;
+      font-size: 0.82rem;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    pre {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1rem;
+      font-size: 0.82rem;
+      color: #cbd5e1;
+      white-space: pre-wrap;
+      max-height: 280px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* ── Error / info boxes ── */
+    .error-box {
+      background: #450a0a;
+      border: 1px solid #ef4444;
+      color: #fca5a5;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      margin-top: 1rem;
+      font-size: 0.88rem;
+      white-space: pre-wrap;
+      display: none;
+    }
+
+    .info-box {
+      background: #0c1a2e;
+      border: 1px solid #0ea5e9;
+      color: #7dd3fc;
+      border-radius: 6px;
+      padding: 0.65rem 1rem;
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      display: none;
+    }
+
+    .prompt-wrap {
+      margin-top: 1.25rem;
+    }
+
+    .prompt-label {
+      display: block;
+      font-size: 0.8rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.4rem;
+    }
+
+    .prompt-hint {
+      text-transform: none;
+      letter-spacing: 0;
+      color: #475569;
+      font-size: 0.76rem;
+      margin-left: 0.4rem;
+    }
+
+    .prompt-input {
+      width: 100%;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #e2e8f0;
+      padding: 0.55rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 60px;
+    }
+
+    .prompt-input:focus { outline: none; border-color: #7c3aed; }
+    .prompt-input::placeholder { color: #475569; }
+
+    .hint {
+      color: #475569;
+      font-size: 0.78rem;
+      margin-top: 1rem;
+      line-height: 1.7;
+    }
+
+    code {
+      background: #1e293b;
+      padding: 0 3px;
+      border-radius: 3px;
+      font-family: 'Courier New', monospace;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>Pembuat File SRT</h1>
+  <p class="tagline">Transkripsi otomatis dari video/audio, atau buat subtitle manual lalu unduh sebagai .srt</p>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('auto')">Otomatis (AI)</button>
+    <button class="tab-btn" onclick="switchTab('manual')">Manual</button>
+  </div>
+
+  <!-- ══════════ TAB OTOMATIS ══════════ -->
+  <div class="tab-panel active" id="tab-auto">
+
+    <div class="upload-card" id="dropZone">
+      <input type="file" id="fileInput" accept="video/*,audio/*,.mkv,.flac,.ogg,.aac,.m4a" />
+      <div class="upload-icon">🎬</div>
+      <p><strong>Klik atau seret file</strong> video/audio ke sini</p>
+      <p class="file-types">MP4, MKV, MOV, AVI, WEBM, MP3, WAV, M4A, OGG, FLAC, AAC</p>
+    </div>
+
+    <div class="selected-file" id="selectedFile">
+      <span>📄</span>
+      <span class="fname" id="selectedFileName"></span>
+      <span id="selectedFileSize" style="color:#475569;margin-left:auto;font-size:0.8rem"></span>
+    </div>
+
+    <div class="upload-options">
+      <div class="opt-group">
+        <label>Model Whisper</label>
+        <select id="modelSelect">
+          <option value="tiny">Tiny — tercepat, akurasi rendah</option>
+          <option value="base">Base — seimbang</option>
+          <option value="small">Small — lebih akurat</option>
+          <option value="medium">Medium — akurat</option>
+          <option value="large" selected>Large — sangat akurat ✦</option>
+          <option value="large-v2">Large-v2 — lebih baik dari Large ✦✦</option>
+          <option value="large-v3">Large-v3 — terbaik saat ini ✦✦✦</option>
+        </select>
+      </div>
+      <div class="opt-group">
+        <label>Bahasa</label>
+        <select id="langSelect">
+          <option value="">Deteksi otomatis</option>
+          <option value="id">Indonesia</option>
+          <option value="en">Inggris</option>
+          <option value="ja">Jepang</option>
+          <option value="zh">Mandarin</option>
+          <option value="ko">Korea</option>
+          <option value="ar">Arab</option>
+          <option value="fr">Prancis</option>
+          <option value="de">Jerman</option>
+          <option value="es">Spanyol</option>
+        </select>
+      </div>
+      <div class="opt-group">
+        <label>Beam Size</label>
+        <select id="beamSelect">
+          <option value="1">1 — cepat</option>
+          <option value="3">3</option>
+          <option value="5" selected>5 — rekomendasi</option>
+          <option value="10">10 — paling teliti</option>
+        </select>
+      </div>
+      <div class="opt-group">
+        <label>Kata per baris</label>
+        <select id="mergeSelect">
+          <option value="2">2 kata</option>
+          <option value="3" selected>3 kata</option>
+          <option value="4">4 kata</option>
+          <option value="5">5 kata</option>
+          <option value="7">7 kata</option>
+          <option value="10">10 kata</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="prompt-wrap">
+      <label class="prompt-label" for="promptInput">
+        Petunjuk kosakata
+        <span class="prompt-hint">opsional — bantu Whisper kenali nama, istilah teknis, atau kata khusus</span>
+      </label>
+      <textarea id="promptInput" class="prompt-input"
+        placeholder="Contoh: nama orang, nama produk, istilah teknis, singkatan yang sering muncul..."></textarea>
+    </div>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-top">
+        <span class="progress-label" id="progressLabel">Memproses...</span>
+        <span class="progress-num" id="progressNum">0%</span>
+      </div>
+      <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill"></div></div>
+    </div>
+
+    <div class="error-box" id="autoError"></div>
+    <div class="info-box" id="autoInfo"></div>
+
+    <div class="actions">
+      <button class="btn btn-transcribe" id="btnTranscribe" onclick="startTranscribe()" disabled>
+        ▶ Transkripsi Otomatis
+      </button>
+    </div>
+
+  </div>
+
+  <!-- ══════════ TAB MANUAL ══════════ -->
+  <div class="tab-panel" id="tab-manual">
+
+    <div class="filename-row">
+      <label for="filename">Nama file:</label>
+      <input type="text" id="filename" placeholder="subtitle" />
+      <span style="color:#64748b;font-size:0.9rem">.srt</span>
+    </div>
+
+    <div class="sub-list" id="subList"></div>
+
+    <div class="error-box" id="manualError"></div>
+
+    <div class="actions">
+      <button class="btn btn-add" onclick="addRow()">+ Tambah Baris</button>
+      <button class="btn btn-download" onclick="downloadSRT()">&#8595; Unduh SRT</button>
+      <button class="btn btn-clear" onclick="clearAll()">Hapus Semua</button>
+    </div>
+
+    <div class="preview-section">
+      <h2>Preview SRT</h2>
+      <pre id="preview">—</pre>
+    </div>
+
+    <p class="hint">
+      Format waktu: <code>HH:MM:SS,mmm</code> &nbsp;|&nbsp; <code>HH:MM:SS</code> &nbsp;|&nbsp;
+      <code>MM:SS</code> &nbsp;|&nbsp; <code>detik</code> (misal: <code>3.5</code>)
+    </p>
+
+  </div>
+</div>
+
+<script>
+  // ── Tab switching ──
+  function switchTab(name) {
+    document.querySelectorAll('.tab-btn').forEach((b, i) => {
+      b.classList.toggle('active', ['auto','manual'][i] === name);
+    });
+    document.getElementById('tab-auto').classList.toggle('active', name === 'auto');
+    document.getElementById('tab-manual').classList.toggle('active', name === 'manual');
+  }
+
+  // ── File selection ──
+  const fileInput = document.getElementById('fileInput');
+  const dropZone  = document.getElementById('dropZone');
+
+  fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
+
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    handleFile(e.dataTransfer.files[0]);
+  });
+
+  function handleFile(file) {
+    if (!file) return;
+    document.getElementById('selectedFileName').textContent = file.name;
+    document.getElementById('selectedFileSize').textContent = formatSize(file.size);
+    document.getElementById('selectedFile').style.display = 'flex';
+    document.getElementById('btnTranscribe').disabled = false;
+    hideAutoMessages();
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  // ── Transcription ──
+  let activeEvtSource = null;
+
+  async function startTranscribe() {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    hideAutoMessages();
+    if (activeEvtSource) { activeEvtSource.close(); activeEvtSource = null; }
+
+    const btn = document.getElementById('btnTranscribe');
+    btn.disabled = true;
+    btn.textContent = '⏳ Memproses...';
+
+    showProgress(0, 'Mengupload file...');
+
+    const form = new FormData();
+    form.append('file', file);
+    form.append('model', document.getElementById('modelSelect').value);
+    form.append('language', document.getElementById('langSelect').value);
+    form.append('beam_size', document.getElementById('beamSelect').value);
+    form.append('prompt', document.getElementById('promptInput').value.trim());
+
+    let jobId;
+    try {
+      const resp = await fetch('/transcribe', { method: 'POST', body: form });
+      const data = await resp.json();
+      if (!resp.ok) { showAutoError(data.error || 'Terjadi kesalahan.'); return; }
+      jobId = data.job_id;
+    } catch (e) {
+      showAutoError('Gagal mengupload: ' + e.message);
+      btn.disabled = false;
+      btn.textContent = '▶ Transkripsi Otomatis';
+      return;
+    }
+
+    // Stream progress via SSE
+    activeEvtSource = new EventSource(`/progress/${jobId}`);
+
+    activeEvtSource.onmessage = (e) => {
+      const job = JSON.parse(e.data);
+      showProgress(job.progress, job.message);
+
+      if (job.status === 'done') {
+        activeEvtSource.close(); activeEvtSource = null;
+        const segments = job.result || [];
+        if (!segments.length) {
+          showAutoError('Tidak ada suara yang terdeteksi.');
+        } else {
+          const n = parseInt(document.getElementById('mergeSelect').value, 10) || 1;
+          const merged = mergeSegments(segments, n);
+          rows = []; idCounter = 0;
+          merged.forEach(seg => addRow(
+            secondsToInput(seg.start), secondsToInput(seg.end), seg.text
+          ));
+          const lang = job.language ? ` (bahasa: ${job.language})` : '';
+          showAutoInfo(`✅ ${segments.length} segmen → ${merged.length} baris (@${n} kata/baris)${lang} — dimuat ke tab Manual.`);
+          setTimeout(() => switchTab('manual'), 600);
+        }
+        btn.disabled = false;
+        btn.textContent = '▶ Transkripsi Otomatis';
+        setTimeout(hideProgress, 3000);
+      } else if (job.status === 'error') {
+        activeEvtSource.close(); activeEvtSource = null;
+        showAutoError(job.message || 'Terjadi kesalahan.');
+        btn.disabled = false;
+        btn.textContent = '▶ Transkripsi Otomatis';
+        hideProgress();
+      }
+    };
+
+    activeEvtSource.onerror = () => {
+      activeEvtSource.close(); activeEvtSource = null;
+      showAutoError('Koneksi ke server terputus.');
+      btn.disabled = false;
+      btn.textContent = '▶ Transkripsi Otomatis';
+      hideProgress();
+    };
+  }
+
+  function mergeSegments(segments, wordsPerLine) {
+    // Flatten semua kata dengan estimasi waktu proporsional per segmen
+    const words = [];
+    for (const seg of segments) {
+      const ws = seg.text.trim().split(/\s+/).filter(Boolean);
+      if (!ws.length) continue;
+      const wDur = (seg.end - seg.start) / ws.length;
+      ws.forEach((w, i) => {
+        words.push({
+          word:  w,
+          start: seg.start + i * wDur,
+          end:   seg.start + (i + 1) * wDur,
+        });
+      });
+    }
+
+    // Kelompokkan per N kata
+    const result = [];
+    for (let i = 0; i < words.length; i += wordsPerLine) {
+      const chunk = words.slice(i, i + wordsPerLine);
+      result.push({
+        start: chunk[0].start,
+        end:   chunk[chunk.length - 1].end,
+        text:  chunk.map(w => w.word).join(' '),
+      });
+    }
+    return result;
+  }
+
+  function secondsToInput(sec) {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = Math.floor(sec % 60);
+    const ms = Math.round((sec - Math.floor(sec)) * 1000);
+    return `${pad(h)}:${pad(m)}:${pad(s)},${pad3(ms)}`;
+  }
+
+  function showProgress(pct, label) {
+    const wrap  = document.getElementById('progressWrap');
+    const fill  = document.getElementById('progressFill');
+    const lbl   = document.getElementById('progressLabel');
+    const numEl = document.getElementById('progressNum');
+    wrap.style.display = 'block';
+    fill.style.width   = pct + '%';
+    lbl.textContent    = label;
+    if (numEl) numEl.textContent = Math.round(pct) + '%';
+  }
+
+  function hideProgress() {
+    document.getElementById('progressWrap').style.display = 'none';
+  }
+
+  function showAutoError(msg) {
+    const b = document.getElementById('autoError');
+    b.textContent = msg;
+    b.style.display = 'block';
+  }
+
+  function showAutoInfo(msg) {
+    const b = document.getElementById('autoInfo');
+    b.textContent = msg;
+    b.style.display = 'block';
+  }
+
+  function hideAutoMessages() {
+    document.getElementById('autoError').style.display = 'none';
+    document.getElementById('autoInfo').style.display = 'none';
+  }
+
+  // ── Manual editor ──
+  let rows = [];
+  let idCounter = 0;
+
+  function addRow(start = '', end = '', text = '') {
+    const id = idCounter++;
+    rows.push({ id, start, end, text });
+    renderRows();
+    updatePreview();
+  }
+
+  function deleteRow(id) {
+    rows = rows.filter(r => r.id !== id);
+    renderRows();
+    updatePreview();
+  }
+
+  function renderRows() {
+    const list = document.getElementById('subList');
+    list.innerHTML = '';
+    rows.forEach((row, idx) => {
+      const div = document.createElement('div');
+      div.className = 'sub-row';
+      div.innerHTML = `
+        <span class="row-num">${idx + 1}</span>
+        <input type="text" placeholder="00:00:00,000" value="${esc(row.start)}"
+          oninput="rows[${idx}].start=this.value;updatePreview()" />
+        <input type="text" placeholder="00:00:03,000" value="${esc(row.end)}"
+          oninput="rows[${idx}].end=this.value;updatePreview()" />
+        <textarea placeholder="Teks subtitle..." oninput="rows[${idx}].text=this.value;updatePreview()">${esc(row.text)}</textarea>
+        <button class="btn-del" onclick="deleteRow(${row.id})">✕</button>
+      `;
+      list.appendChild(div);
+    });
+  }
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function parseTimeJS(s) {
+    s = s.trim();
+    let m;
+    if ((m = s.match(/^(\d+):(\d+):(\d+)[,.](\d+)$/))) return +m[1]*3600 + +m[2]*60 + +m[3] + +m[4]/1000;
+    if ((m = s.match(/^(\d+):(\d+):(\d+)$/)))           return +m[1]*3600 + +m[2]*60 + +m[3];
+    if ((m = s.match(/^(\d+):(\d+)$/)))                 return +m[1]*60 + +m[2];
+    if ((m = s.match(/^(\d+\.?\d*)$/)))                 return parseFloat(m[1]);
+    return NaN;
+  }
+
+  function toSRTTime(sec) {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = Math.floor(sec % 60);
+    const ms = Math.round((sec - Math.floor(sec)) * 1000);
+    return `${pad(h)}:${pad(m)}:${pad(s)},${pad3(ms)}`;
+  }
+
+  function pad(n)  { return String(n).padStart(2,'0'); }
+  function pad3(n) { return String(n).padStart(3,'0'); }
+
+  function updatePreview() {
+    const lines = [];
+    let idx = 1;
+    for (const row of rows) {
+      const start = parseTimeJS(row.start);
+      const end   = parseTimeJS(row.end);
+      const text  = row.text.trim();
+      if (isNaN(start) || isNaN(end) || !text) continue;
+      lines.push(String(idx++));
+      lines.push(`${toSRTTime(start)} --> ${toSRTTime(end)}`);
+      lines.push(text);
+      lines.push('');
+    }
+    document.getElementById('preview').textContent = lines.length ? lines.join('\n') : '—';
+  }
+
+  async function downloadSRT() {
+    const errorBox = document.getElementById('manualError');
+    errorBox.style.display = 'none';
+    const filename = document.getElementById('filename').value.trim() || 'subtitle';
+    const payload  = { filename, subtitles: rows.map(r => ({ start: r.start, end: r.end, text: r.text })) };
+
+    try {
+      const resp = await fetch('/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json();
+        errorBox.textContent = err.error || 'Terjadi kesalahan.';
+        errorBox.style.display = 'block';
+        return;
+      }
+
+      const blob = await resp.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = filename.endsWith('.srt') ? filename : filename + '.srt';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      errorBox.textContent = 'Gagal menghubungi server.';
+      errorBox.style.display = 'block';
+    }
+  }
+
+  function clearAll() {
+    if (rows.length && !confirm('Hapus semua baris?')) return;
+    rows = [];
+    renderRows();
+    updatePreview();
+  }
+
+  // Seed contoh di manual
+  addRow('00:00:01,000', '00:00:04,000', 'Selamat datang di pembuat file SRT.');
+  addRow('00:00:04,500', '00:00:07,000', 'Upload video/audio untuk transkripsi otomatis.');
+  addRow('00:00:07,500', '00:00:10,000', 'Atau edit subtitle manual di sini.');
+</script>
+</body>
+</html>
