@@ -7,6 +7,13 @@ import uuid
 import tempfile
 import threading
 import subprocess
+import sys
+
+# Ensure common macOS Homebrew/local paths are in the PATH environment variable
+if sys.platform == "darwin":
+    for path in ["/opt/homebrew/bin", "/usr/local/bin"]:
+        if path not in os.environ["PATH"]:
+            os.environ["PATH"] = path + os.pathsep + os.environ["PATH"]
 
 from faster_whisper import WhisperModel
 from flask import Flask, render_template, request, send_file, jsonify, Response, stream_with_context
