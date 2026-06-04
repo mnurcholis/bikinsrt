@@ -128,6 +128,7 @@ def run_transcribe(job_id, tmp_path, model_size, language, prompt, beam_size):
             condition_on_previous_text=True,
             vad_filter=True,
             vad_parameters={"min_silence_duration_ms": 500},
+            word_timestamps=True,
         )
 
         total_dur = info.duration if info.duration else duration
@@ -135,22 +136,40 @@ def run_transcribe(job_id, tmp_path, model_size, language, prompt, beam_size):
         segments = []
 
         for seg in segments_gen:
+            if jobs[job_id].get("cancelled"):
+                break
+            word_data = []
+            if seg.words:
+                for w in seg.words:
+                    word_data.append({
+                        "word": w.word,
+                        "start": round(w.start, 3),
+                        "end": round(w.end, 3),
+                    })
             segments.append({
                 "start": seg.start,
                 "end": seg.end,
                 "text": seg.text.strip(),
+                "words": word_data,
             })
             pct = min(95, int((seg.end / total_dur) * 85) + 10) if total_dur > 0 else 50
             elapsed = f"{seg.end:.0f}s / {total_dur:.0f}s"
             update(pct, f"Memproses {elapsed}... ({len(segments)} segmen)")
 
-        update(
-            progress=100,
-            message=f"Selesai — {len(segments)} segmen (bahasa: {detected_lang})",
-            status="done",
-            result=segments,
-            language=detected_lang,
-        )
+        if jobs[job_id].get("cancelled"):
+            update(
+                progress=0,
+                message="Transkripsi dihentikan.",
+                status="cancelled",
+            )
+        else:
+            update(
+                progress=100,
+                message=f"Selesai — {len(segments)} segmen (bahasa: {detected_lang})",
+                status="done",
+                result=segments,
+                language=detected_lang,
+            )
 
     except Exception as e:
         jobs[job_id].update({"status": "error", "message": str(e)})
@@ -237,6 +256,15 @@ def transcribe():
     return jsonify({"job_id": job_id})
 
 
+@app.route("/cancel/<job_id>", methods=["POST"])
+def cancel(job_id):
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job tidak ditemukan"}), 404
+    job["cancelled"] = True
+    return jsonify({"ok": True})
+
+
 @app.route("/progress/<job_id>")
 def progress(job_id):
     def generate():
@@ -246,7 +274,7 @@ def progress(job_id):
                 yield f"data: {json.dumps({'status': 'error', 'message': 'Job tidak ditemukan'})}\n\n"
                 return
             yield f"data: {json.dumps(job)}\n\n"
-            if job["status"] in ("done", "error"):
+            if job["status"] in ("done", "error", "cancelled"):
                 jobs.pop(job_id, None)
                 return
             time.sleep(0.4)

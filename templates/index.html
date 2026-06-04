@@ -291,6 +291,7 @@
     .btn-download { background: #0ea5e9; color: #fff; }
     .btn-transcribe { background: #7c3aed; color: #fff; }
     .btn-clear { background: #1e293b; color: #f87171; border: 1px solid #f87171; margin-left: auto; }
+    .btn-stop  { background: #1e293b; color: #fb923c; border: 1px solid #fb923c; }
 
     /* ── Preview ── */
     .preview-section { margin-top: 2rem; }
@@ -456,7 +457,7 @@
         </select>
       </div>
       <div class="opt-group">
-        <label>Kata per baris</label>
+        <label>Maks kata/baris</label>
         <select id="mergeSelect">
           <option value="1">1 kata</option>
           <option value="2">2 kata</option>
@@ -465,6 +466,13 @@
           <option value="5">5 kata</option>
           <option value="7">7 kata</option>
           <option value="10">10 kata</option>
+        </select>
+      </div>
+      <div class="opt-group">
+        <label>Mode caption</label>
+        <select id="modeSelect">
+          <option value="normal">Normal</option>
+          <option value="capcut">CapCut (presisi per kata)</option>
         </select>
       </div>
     </div>
@@ -492,6 +500,9 @@
     <div class="actions">
       <button class="btn btn-transcribe" id="btnTranscribe" onclick="startTranscribe()" disabled>
         ▶ Transkripsi Otomatis
+      </button>
+      <button class="btn btn-stop" id="btnStop" onclick="stopTranscribe()" style="display:none">
+        ■ Hentikan
       </button>
     </div>
 
@@ -569,6 +580,27 @@
 
   // ── Transcription ──
   let activeEvtSource = null;
+  let activeJobId     = null;
+
+  function setTranscribing(on) {
+    document.getElementById('btnTranscribe').disabled = on;
+    document.getElementById('btnTranscribe').textContent = on ? '⏳ Memproses...' : '▶ Transkripsi Otomatis';
+    document.getElementById('btnStop').style.display = on ? 'inline-block' : 'none';
+  }
+
+  function stopTranscribe() {
+    if (!activeEvtSource && !activeJobId) return;
+    // Tutup SSE stream langsung
+    if (activeEvtSource) { activeEvtSource.close(); activeEvtSource = null; }
+    // Reset UI seketika — tidak nunggu konfirmasi server
+    setTranscribing(false);
+    hideProgress();
+    showAutoError('Transkripsi dihentikan.');
+    // Kirim cancel ke server (fire and forget)
+    const jid = activeJobId;
+    activeJobId = null;
+    if (jid) fetch(`/cancel/${jid}`, { method: 'POST' }).catch(() => {});
+  }
 
   async function startTranscribe() {
     const file = fileInput.files[0];
@@ -577,9 +609,7 @@
     hideAutoMessages();
     if (activeEvtSource) { activeEvtSource.close(); activeEvtSource = null; }
 
-    const btn = document.getElementById('btnTranscribe');
-    btn.disabled = true;
-    btn.textContent = '⏳ Memproses...';
+    setTranscribing(true);
 
     showProgress(0, 'Mengupload file...');
 
@@ -594,12 +624,12 @@
     try {
       const resp = await fetch('/transcribe', { method: 'POST', body: form });
       const data = await resp.json();
-      if (!resp.ok) { showAutoError(data.error || 'Terjadi kesalahan.'); return; }
+      if (!resp.ok) { showAutoError(data.error || 'Terjadi kesalahan.'); setTranscribing(false); return; }
       jobId = data.job_id;
+      activeJobId = jobId;
     } catch (e) {
       showAutoError('Gagal mengupload: ' + e.message);
-      btn.disabled = false;
-      btn.textContent = '▶ Transkripsi Otomatis';
+      setTranscribing(false);
       return;
     }
 
@@ -616,39 +646,48 @@
         if (!segments.length) {
           showAutoError('Tidak ada suara yang terdeteksi.');
         } else {
-          const n = parseInt(document.getElementById('mergeSelect').value, 10) || 1;
-          const merged = mergeSegments(segments, n);
+          const n    = parseInt(document.getElementById('mergeSelect').value, 10) || 1;
+          const mode = document.getElementById('modeSelect').value;
+          const merged = mode === 'capcut'
+            ? mergeSegmentsCapcut(segments, n)
+            : mergeSegments(segments, n);
           rows = []; idCounter = 0;
           merged.forEach(seg => addRow(
             secondsToInput(seg.start), secondsToInput(seg.end), seg.text
           ));
-          const lang = job.language ? ` (bahasa: ${job.language})` : '';
-          showAutoInfo(`✅ ${segments.length} segmen → ${merged.length} baris (@${n} kata/baris)${lang} — dimuat ke tab Manual.`);
+          const lang      = job.language ? ` (bahasa: ${job.language})` : '';
+          const modeLabel = mode === 'capcut' ? ' · CapCut mode' : '';
+          showAutoInfo(`✅ ${segments.length} segmen → ${merged.length} baris (@${n} kata/baris${modeLabel})${lang} — dimuat ke tab Manual.`);
           setTimeout(() => switchTab('manual'), 600);
         }
-        btn.disabled = false;
-        btn.textContent = '▶ Transkripsi Otomatis';
+        setTranscribing(false);
+        activeJobId = null;
         setTimeout(hideProgress, 3000);
+      } else if (job.status === 'cancelled') {
+        activeEvtSource.close(); activeEvtSource = null;
+        activeJobId = null;
+        showAutoError('Transkripsi dihentikan.');
+        setTranscribing(false);
+        hideProgress();
       } else if (job.status === 'error') {
         activeEvtSource.close(); activeEvtSource = null;
+        activeJobId = null;
         showAutoError(job.message || 'Terjadi kesalahan.');
-        btn.disabled = false;
-        btn.textContent = '▶ Transkripsi Otomatis';
+        setTranscribing(false);
         hideProgress();
       }
     };
 
     activeEvtSource.onerror = () => {
       activeEvtSource.close(); activeEvtSource = null;
+      activeJobId = null;
       showAutoError('Koneksi ke server terputus.');
-      btn.disabled = false;
-      btn.textContent = '▶ Transkripsi Otomatis';
+      setTranscribing(false);
       hideProgress();
     };
   }
 
   function mergeSegments(segments, wordsPerLine) {
-    // Flatten semua kata dengan estimasi waktu proporsional per segmen
     const words = [];
     for (const seg of segments) {
       const ws = seg.text.trim().split(/\s+/).filter(Boolean);
@@ -663,15 +702,92 @@
       });
     }
 
-    // Kelompokkan per N kata
+    const isSentenceEnd = w => /[.!?。！？]+["'»]?$/.test(w);
+    const isClauseEnd   = w => /[,;:،]+$/.test(w);
+
     const result = [];
-    for (let i = 0; i < words.length; i += wordsPerLine) {
-      const chunk = words.slice(i, i + wordsPerLine);
+    let i = 0;
+
+    while (i < words.length) {
+      const maxEnd = Math.min(i + wordsPerLine, words.length);
+
+      // Utamakan potong di akhir kalimat
+      let cutAt = -1;
+      for (let j = i; j < maxEnd; j++) {
+        if (isSentenceEnd(words[j].word)) { cutAt = j + 1; break; }
+      }
+
+      // Jika tidak ada akhir kalimat, cari klausa (koma/titik koma) dari separuh chunk
+      if (cutAt === -1) {
+        const half = i + Math.ceil(wordsPerLine / 2);
+        for (let j = maxEnd - 1; j >= half; j--) {
+          if (isClauseEnd(words[j].word)) { cutAt = j + 1; break; }
+        }
+      }
+
+      // Fallback: potong di batas kata maksimum
+      if (cutAt === -1) cutAt = maxEnd;
+
+      const chunk = words.slice(i, cutAt);
       result.push({
         start: chunk[0].start,
         end:   chunk[chunk.length - 1].end,
         text:  chunk.map(w => w.word).join(' '),
       });
+      i = cutAt;
+    }
+
+    return result;
+  }
+
+  // CapCut mode: pakai word timestamps presisi dari Whisper
+  function mergeSegmentsCapcut(segments, wordsPerLine) {
+    const words = [];
+    for (const seg of segments) {
+      if (seg.words && seg.words.length) {
+        for (const w of seg.words) {
+          if (w.word.trim()) words.push({ word: w.word, start: w.start, end: w.end });
+        }
+      } else {
+        // Fallback estimasi proporsional jika word timestamps tidak ada
+        const ws = seg.text.trim().split(/\s+/).filter(Boolean);
+        if (!ws.length) continue;
+        const wDur = (seg.end - seg.start) / ws.length;
+        ws.forEach((w, i) => words.push({
+          word:  w,
+          start: seg.start + i * wDur,
+          end:   seg.start + (i + 1) * wDur,
+        }));
+      }
+    }
+
+    const isSentenceEnd = w => /[.!?。！？]+["'»]?$/.test(w);
+    const isClauseEnd   = w => /[,;:،]+$/.test(w);
+
+    const result = [];
+    let i = 0;
+    while (i < words.length) {
+      const maxEnd = Math.min(i + wordsPerLine, words.length);
+
+      let cutAt = -1;
+      for (let j = i; j < maxEnd; j++) {
+        if (isSentenceEnd(words[j].word)) { cutAt = j + 1; break; }
+      }
+      if (cutAt === -1) {
+        const half = i + Math.ceil(wordsPerLine / 2);
+        for (let j = maxEnd - 1; j >= half; j--) {
+          if (isClauseEnd(words[j].word)) { cutAt = j + 1; break; }
+        }
+      }
+      if (cutAt === -1) cutAt = maxEnd;
+
+      const chunk = words.slice(i, cutAt);
+      result.push({
+        start: chunk[0].start,
+        end:   chunk[chunk.length - 1].end,
+        text:  chunk.map(w => w.word).join('').replace(/\s+/g, ' ').trim(),
+      });
+      i = cutAt;
     }
     return result;
   }
